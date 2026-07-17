@@ -1,0 +1,33 @@
+[package]
+name = "x-gettsu"
+version = "1.0.0"
+description = "X(Twitter)の投稿URLからメディアをダウンロードするデスクトップアプリ"
+authors = ["Romly"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "x_gettsu_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = "0.3"
+regex = "1"
+arboard = "3"
+trash = "5"
+
+# ウィンドウ配置の永続化、システムバックドロップとアクセント色、自作タイトルバーのウィンドウ操作を担う共通クレート。正本は別リポジトリにあり、ここへは git subtree で内包している。Win32 の呼び出しはこのクレートが引き受けるため、アプリ側で windows/windows-sys を直に依存しない。
+romly-tauri-common = { path = "External/romly-tauri-common" }
