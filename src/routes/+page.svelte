@@ -23,6 +23,13 @@
 		items: MediaItem[];
 	};
 
+	// Rust 側の get_settings / save_settings とやり取りするアプリ設定。settings.json に永続化される。
+	type Settings = {
+		destDir: string;
+		watch: boolean;
+		autoDownload: boolean;
+	};
+
 	let destDir = $state("");
 	let watch = $state(false);
 	let autoDownload = $state(false);
@@ -49,18 +56,21 @@
 
 	const URL_RE = /(?:twitter|x)\.com\/[A-Za-z0-9_]+\/status\/\d+/;
 
+	// macOS かどうか。タイトルバーの作りが OS で変わるため、初期描画の時点で形が決まっているようコマンドの応答を待たず同期的に判定する。
+	const isMac = navigator.userAgent.includes("Macintosh");
+
 	onMount(async () => {
-		destDir = localStorage.getItem("destDir") ?? (await invoke<string>("default_download_dir"));
-		watch = localStorage.getItem("watch") === "1";
-		autoDownload = localStorage.getItem("autoDownload") === "1";
+		const settings = await invoke<Settings>("get_settings");
+		destDir = settings.destDir;
+		watch = settings.watch;
+		autoDownload = settings.autoDownload;
 		await invoke("set_watch", { enabled: watch });
 
-		// システムのアクセントカラーを取得してテーマ変数へ反映する。取得できない場合は CSS 側の既定色を使う。
+		// システムのアクセントカラーを取得してテーマ変数へ反映する。取得できない場合は CSS 側の指定に委ねる。
 		try {
-			const accent = await invoke<string | null>("accent_color");
-			if (accent) document.documentElement.style.setProperty("--accent", accent);
+			applyAccent(await invoke<string | null>("accent_color"));
 		} catch {
-			// 取得失敗時は既定色のまま
+			// 取得失敗時は CSS 側の指定のまま
 		}
 
 		// タイトルバーへ表示するアプリのバージョンを取得する。値は tauri.conf.json 由来で、取得に失敗したら空のまま表示しない。
@@ -76,10 +86,15 @@
 			if (!target?.closest("input, textarea")) e.preventDefault();
 		});
 
-		// カスタムタイトルバーの最大化ボタンの図形を、実際の最大化状態に追従させる。ボタンによる操作だけでなく Win+↑やスナップでの変化も含め、状態が変わると Rust 側が win-maximized を発火する。
+		// 自作タイトルバーの最大化ボタンの図形を、実際の最大化状態に追従させる。ボタンによる操作だけでなく Win+↑やスナップでの変化も含め、状態が変わると Rust 側が win-maximized を発火する。
 		maximized = await invoke<boolean>("win_is_maximized");
 		await listen<boolean>("win-maximized", (e) => {
 			maximized = e.payload;
+		});
+
+		// OS 側でアクセント色を変えたときに追従する。実値を返さない OS ではこのイベントが来ず、CSS 側の指定が OS の変更をそのまま映す。
+		await listen<string>("accent-changed", (e) => {
+			applyAccent(e.payload);
 		});
 
 		await listen<string>("clipboard-changed", async (e) => {
@@ -93,10 +108,15 @@
 		});
 	});
 
+	// OS のアクセント色をテーマ変数へ反映する。値が無いときはインラインの指定を外し、CSS 側の指定へ戻す。
+	function applyAccent(accent: string | null) {
+		if (accent) document.documentElement.style.setProperty("--accent", accent);
+		else document.documentElement.style.removeProperty("--accent");
+	}
+
+	// 現在の設定を Rust 側へ渡して settings.json へ保存する。操作を妨げないよう完了は待たず、失敗はコンソールへ記録するだけにする。
 	function persist() {
-		localStorage.setItem("destDir", destDir);
-		localStorage.setItem("watch", watch ? "1" : "0");
-		localStorage.setItem("autoDownload", autoDownload ? "1" : "0");
+		invoke("save_settings", { settings: { destDir, watch, autoDownload } }).catch((err) => console.error("設定の保存に失敗:", err));
 	}
 
 	async function toggleWatch() {
@@ -253,7 +273,7 @@
 	}
 </script>
 
-<div class="titlebar">
+<div class="titlebar" class:is-mac={isMac}>
 	<div class="titlebar-drag" onmousedown={onDragMouseDown} onmousemove={onDragMouseMove} onmouseup={onDragMouseUp} ondblclick={toggleMaximize} role="presentation">
 		<img class="titlebar-icon" src="/app-icon.png" alt="" aria-hidden="true" />
 		<span class="titlebar-title">エックスげっつ</span>
@@ -400,12 +420,19 @@
 
 <style>
 	:root {
-		/* onMount でシステムのアクセントカラーに差し替える。取得できなかった場合の既定値。 */
+		/* system-color を解釈しない WebView 向けの既定値。 */
 		--accent: #0078d4;
 		font-family: "Segoe UI", system-ui, sans-serif;
 		color: #1a1a1a;
 		/* 背景はウィンドウのシステムバックドロップ(Mica/Acrylic)を透かすため透過にする。 */
 		background-color: transparent;
+	}
+
+	/* system-color を解釈する WebView では OS のアクセント色そのものへ委ねる。OS 側で色を変えたときの塗り替えも WebView が引き受けるため、実値を返さない OS ではこの指定だけで追従する。実値を返す OS では accent_color と accent-changed で受け取った色が html 要素のインラインスタイルとして上書きする。 */
+	@supports (color: AccentColor) {
+		:root {
+			--accent: AccentColor;
+		}
 	}
 
 	:global(html),
@@ -499,6 +526,21 @@
 
 	.tb-btn:focus-visible {
 		outline-offset: -2px;
+	}
+
+	/* macOS では OS の信号機ボタン(閉じる・最小化・最大化)を左上へ重ねて表示する(tauri.macos.conf.json の titleBarStyle: Overlay)。自前のキャプションボタンは重複するため隠す。 */
+	.titlebar.is-mac .titlebar-controls {
+		display: none;
+	}
+
+	/* macOS のタイトルバーにアプリのアイコンを置く作法は無いため隠す。あそこへ絵が出るのは開いている書類を表すプロキシアイコンで、アプリ自身を指すものではない。 */
+	.titlebar.is-mac .titlebar-icon {
+		display: none;
+	}
+
+	/* 左上へ重なる信号機ボタンとタイトルが重ならないよう、ドラッグ領域の左を信号機ボタンのぶん空ける。 */
+	.titlebar.is-mac .titlebar-drag {
+		padding-left: 76px;
 	}
 
 	.container {

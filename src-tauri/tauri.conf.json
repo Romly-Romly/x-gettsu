@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "X-Gettsu",
   "mainBinaryName": "XGettsu",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "identifier": "com.romly.xgettsu",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -11,6 +11,7 @@
     "frontendDist": "../build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "エックスげっつ",

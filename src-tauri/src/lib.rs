@@ -8,6 +8,8 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod settings;
+
 /// video.twimg.com は素のクライアントだと弾くことがあるため、ブラウザを装うUAを使う。
 const USER_AGENT: &str =
 	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -392,10 +394,25 @@ fn set_watch(state: State<WatchFlag>, enabled: bool) {
 
 
 
-/// 既定の保存先フォルダのパスを返す。
+/// 保存済みのアプリ設定を返す。保存先フォルダが未設定の場合は既定の保存先フォルダで埋めて返す。
 #[tauri::command]
-fn default_download_dir(app: AppHandle) -> String {
-	default_dir(&app).to_string_lossy().to_string()
+fn get_settings(app: AppHandle) -> settings::Settings {
+	let mut loaded = settings::load(&app);
+
+	if loaded.dest_dir.is_empty() {
+		loaded.dest_dir = default_dir(&app).to_string_lossy().to_string();
+	}
+
+	loaded
+}
+
+
+
+
+/// アプリ設定を settings.json へ書き出す。
+#[tauri::command]
+fn save_settings(app: AppHandle, settings: settings::Settings) -> Result<(), String> {
+	settings::save(&app, &settings)
 }
 
 
@@ -457,6 +474,9 @@ pub fn run() {
 				let _ = window.show();
 			}
 
+			// OS のアクセント色の変更をフロントへ伝え、起動後に色を変えてもテーマがその場で追従するようにする。
+			romly_tauri_common::watch_accent_color(app.handle());
+
 			// クリップボードを定期的に読み、内容が変わったら(監視ON時のみ) clipboard-changed を発火する。
 			std::thread::spawn(move || {
 				let mut cb = match arboard::Clipboard::new() {
@@ -489,7 +509,8 @@ pub fn run() {
 			download,
 			read_clipboard,
 			set_watch,
-			default_download_dir,
+			get_settings,
+			save_settings,
 			open_dir,
 			move_to_trash,
 			app_version,

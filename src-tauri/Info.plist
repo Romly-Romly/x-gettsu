@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Contents/Resources/Assets.car に収めたアイコンの名前。macOS はこの指定があるとアセットカタログ側を優先し、層を表示のたびに合成してライト・ダーク・色合いへ追従させる。Tauri が書く CFBundleIconFile (icon.icns) は、アセットカタログを読まない相手に対する控えとして残る。名前は _scripts/make_mac_icons.py の ASSET_NAME と一致させること。 -->
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+</dict>
+</plist>

@@ -4,7 +4,11 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::MAIN_WINDOW_LABEL;
 
-/// Mica を使える最小の Windows ビルド番号。Mica は Windows 11 以降でのみ利用できる。
+/// OS のアクセント色が変わったときにフロントへ知らせるイベント名。ペイロードは "#rrggbb" 形式の色。フロントはこれを受けてテーマ変数を差し替え、OS の設定変更へその場で追従する。
+pub const ACCENT_CHANGED_EVENT: &str = "accent-changed";
+
+/// Mica を使える最小の Windows ビルド番号。Mica は Windows 11 以降でのみ利用できる。バックドロップの選択は Windows でのみ行うため、参照側に合わせて定義もその環境に限る。
+#[cfg(windows)]
 const MICA_MIN_BUILD: u32 = 22000;
 
 
@@ -157,3 +161,68 @@ pub fn read_os_accent_color() -> Option<String> {
 pub fn accent_color() -> Option<String> {
 	read_os_accent_color()
 }
+
+
+
+
+
+
+
+
+
+
+/// OS のアクセント色の変更を監視し、色が変わるたびに ACCENT_CHANGED_EVENT を発火する。アプリの setup から一度呼ぶ。Windows では DWM のレジストリキーへ変更通知を張って専用スレッドを眠らせ、値が書き換わった時だけ起きるためポーリングを行わない。
+#[cfg(windows)]
+pub fn watch_accent_color<R: Runtime>(app: &AppHandle<R>) {
+	use tauri::Emitter;
+	use windows_sys::Win32::System::Registry::{
+		RegCloseKey, RegNotifyChangeKeyValue, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_NOTIFY, REG_NOTIFY_CHANGE_LAST_SET,
+	};
+
+	let app = app.clone();
+
+	std::thread::spawn(move || {
+		let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\DWM\0".encode_utf16().collect();
+		let mut key: HKEY = std::ptr::null_mut();
+
+		// 求めるのは変更の通知だけなので、読み取りではなく KEY_NOTIFY のみでキーを開く。RegOpenKeyExW は成功時に ERROR_SUCCESS(0) を返す。
+		if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_NOTIFY, &mut key) } != 0 {
+			return;
+		}
+
+		let mut last = read_os_accent_color();
+
+		loop {
+			// 最後の引数を FALSE にすると同期呼び出しになり、キー配下の値が書き換わるまでこのスレッドが眠る。通知は一度受け取ると外れるため、目覚めるたびに張り直す。
+			if unsafe { RegNotifyChangeKeyValue(key, 0, REG_NOTIFY_CHANGE_LAST_SET, std::ptr::null_mut(), 0) } != 0 {
+				break;
+			}
+
+			// DWM キーはアクセント色以外の値も持つため、読み直した色が実際に変わった時だけ通知する。
+			let current = read_os_accent_color();
+
+			if current != last {
+				last = current.clone();
+
+				if let Some(color) = current {
+					let _ = app.emit(ACCENT_CHANGED_EVENT, color);
+				}
+			}
+		}
+
+		unsafe { RegCloseKey(key) };
+	});
+}
+
+
+
+
+
+
+
+
+
+
+/// Windows 以外では監視を行わない。CSS の system-color を OS のアクセント色へ解決する WebView では、OS 側で色を変えたときの反映も WebView 自身が引き受けるため、Rust から変更を知らせる必要がない。
+#[cfg(not(windows))]
+pub fn watch_accent_color<R: Runtime>(_app: &AppHandle<R>) {}

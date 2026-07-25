@@ -19,7 +19,13 @@
 
 ### macOS
 
-- リリース予定
+- **ディスクイメージ** — `*_aarch64.dmg` (Apple Silicon 専用)
+
+ダウンロードした `.dmg` を開き、中の `X-Gettsu.app` を「アプリケーション」フォルダにドラッグして下さい。未署名のためそのままでは開けず、 *ゴミ箱に捨てろ* と言われてしまいます(ひどい😭)。ターミナルから次のコマンドで検疫属性を外すと起動できるようになります。自己責任でどうぞ。
+
+```sh
+xattr -dr com.apple.quarantine /Applications/X-Gettsu.app
+```
 
 
 
@@ -28,6 +34,7 @@
 | OS | バージョン |
 |---|---|
 | Windows | 10 / 11 (64bit) |
+| macOS | 26 (Tahoe) 以降 (Apple Silicon) |
 
 
 
@@ -52,10 +59,17 @@
 
 設定とウィンドウ状態は以下の場所に保存されます。
 
-| 内容 | 場所 |
+| 内容 | ファイル |
 |---|---|
-| 各種設定 | `%LOCALAPPDATA%\com.romly.xgettsu\EBWebView` 配下 (WebView2のローカルストレージ) |
-| ウィンドウの位置・サイズ・最大化状態 | `%APPDATA%\com.romly.xgettsu\window-state.json` |
+| 各種設定 | `settings.json` |
+| ウィンドウの位置・サイズ・最大化状態 | `window-state.json` |
+
+いずれもOSごとに以下のフォルダへ置かれます。
+
+| OS | フォルダ |
+|---|---|
+| Windows | `%APPDATA%\com.romly.xgettsu\` |
+| macOS | `~/Library/Application Support/com.romly.xgettsu/` |
 
 
 
